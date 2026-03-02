@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import puppeteer from 'puppeteer';
 import * as cheerio from 'cheerio';
+import { GoogleDecoder } from 'google-news-url-decoder';
 
 dotenv.config();
 
@@ -457,6 +458,27 @@ async function fetchGoogleNews(cutoffDate, existingLinks) {
         await new Promise(r => setTimeout(r, 1000));
     }
 
+    // Resolve Google News redirect links to final URLs
+    if (all.length > 0) {
+        process.stdout.write(`  ▶ URL 리다이렉트 추적 (${all.length}개)... `);
+        let resolved = 0;
+        const decoder = new GoogleDecoder();
+
+        for (let i = 0; i < all.length; i += 40) {
+            await Promise.all(all.slice(i, i + 40).map(async a => {
+                if (!a.link.includes('news.google.com/rss/articles/')) return;
+                try {
+                    const decoded = await decoder.decode(a.link);
+                    if (decoded && decoded.status && decoded.decoded_url) {
+                        a.link = decoded.decoded_url;
+                        resolved++;
+                    }
+                } catch { /* Ignore decode errors */ }
+            }));
+        }
+        console.log(`${resolved}개 URL 변환 완료`);
+    }
+
     // Fetch article body for items with empty snippet
     const noSnippet = all.filter(a => !a.snippet);
     if (noSnippet.length > 0) {
@@ -470,6 +492,7 @@ async function fetchGoogleNews(cutoffDate, existingLinks) {
                         signal: AbortSignal.timeout(8000), redirect: 'follow',
                     });
                     if (!resp.ok) return;
+                    if (resp.url && !resp.url.includes('news.google.com')) a.link = resp.url; // Update link here too just in case
                     const $ = cheerio.load(await resp.text());
                     $('nav,header,footer,aside,script,style,[class*="nav"],[class*="sidebar"],[class*="cookie"],[class*="banner"],[class*="related"]').remove();
                     const paras = $('article p,[class*="article"] p,[class*="story"] p,main p,.content p')
