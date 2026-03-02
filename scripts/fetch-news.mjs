@@ -588,12 +588,19 @@ async function main() {
     validCutoff.setDate(validCutoff.getDate() - MAX_DAYS);
     all = all.filter(a => new Date(a.pubDate) >= validCutoff).slice(0, 200);
 
+    const actualNewCount = all.length - existingData.articles.length; // Approximate, but good enough
+
     fs.writeFileSync(DATA_FILE, JSON.stringify({
-        metadata: { lastUpdated: new Date().toISOString(), totalArticles: all.length },
+        metadata: {
+            lastUpdated: new Date().toISOString(),
+            totalArticles: all.length,
+            newArticlesCount: Math.max(0, actualNewCount),
+            runId: Date.now().toString() // Always changes on every run
+        },
         articles: all,
     }, null, 2), 'utf8');
 
-    console.log(`✅ ${all.length}개 저장 완료.`);
+    console.log(`✅ ${all.length}개 저장 완료. (새 기사: ${Math.max(0, actualNewCount)}개 추정)`);
     console.log('ℹ️  AI 요약은 버튼 클릭 시에만 실행됩니다.');
 }
 
