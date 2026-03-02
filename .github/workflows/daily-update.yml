@@ -1,0 +1,48 @@
+name: Daily News Fetch
+
+on:
+  schedule:
+    # 23:00 UTC = 08:00 KST
+    - cron: '0 23 * * *'
+  workflow_dispatch:   # manual trigger from browser or Refresh button
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    # Puppeteer on Linux needs these system packages
+    - name: Install Chromium system deps
+      run: |
+        sudo apt-get update -q
+        sudo apt-get install -yq \
+          libglib2.0-0 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+          libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
+          libxrandr2 libgbm1 libasound2t64 libpango-1.0-0 libcairo2
+
+    - name: Run news fetch script
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      run: node scripts/fetch-news.mjs
+
+    - name: Commit and push data.json
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Actions"
+        git add public/data.json
+        git diff --staged --quiet || git commit -m "chore: update news data $(date -u +'%Y-%m-%d %H:%M UTC') [skip ci]"
+        git push
