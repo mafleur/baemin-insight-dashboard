@@ -7,6 +7,7 @@ export default function App() {
   const [filteredArticles, setFilteredArticles] = useState([]);
   const [activeTag, setActiveTag] = useState('All');
   const [lastUpdated, setLastUpdated] = useState('');
+  const [runId, setRunId] = useState('');
   const [loading, setLoading] = useState(true);
 
   const tags = ['All', 'Delivery', 'AI', 'IT'];
@@ -27,6 +28,9 @@ export default function App() {
             hour: '2-digit', minute: '2-digit'
           }));
         }
+        if (data.metadata?.runId) {
+          setRunId(data.metadata.runId);
+        }
         setLoading(false);
       })
       .catch(err => {
@@ -41,6 +45,28 @@ export default function App() {
       setFilteredArticles(articles);
     } else {
       setFilteredArticles(articles.filter(article => article.category === tag));
+    }
+  };
+
+  const handleRefreshDone = (data) => {
+    setArticles(data.articles || []);
+
+    // Update filtered items retaining the active tag
+    if (activeTag === 'All') {
+      setFilteredArticles(data.articles || []);
+    } else {
+      setFilteredArticles((data.articles || []).filter(a => a.category === activeTag));
+    }
+
+    if (data.metadata?.lastUpdated) {
+      const date = new Date(data.metadata.lastUpdated);
+      setLastUpdated(date.toLocaleString('ko-KR', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit'
+      }));
+    }
+    if (data.metadata?.runId) {
+      setRunId(data.metadata.runId);
     }
   };
 
@@ -67,7 +93,7 @@ export default function App() {
                   <p className="text-sm text-gray-600 font-medium">{lastUpdated}</p>
                 </div>
               )}
-              <RefreshButton />
+              <RefreshButton currentRunId={runId} onRefreshDone={handleRefreshDone} />
             </div>
 
           </div>
