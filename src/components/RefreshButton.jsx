@@ -1,12 +1,61 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
-// No VITE_GITHUB_TOKEN here — the token lives server-side in /api/trigger-refresh
-export default function RefreshButton() {
-    const [state, setState] = useState('idle'); // idle | triggering | waiting | done | error
+export default function RefreshButton({ currentRunId, onRefreshDone }) {
+    const [state, setState] = useState('idle'); // idle | triggering | polling | done | error | nonew
     const [msg, setMsg] = useState('');
+    const pollInterval = useRef(null);
+
+    // Cleanup polling on unmount
+    useEffect(() => {
+        return () => {
+            if (pollInterval.current) clearInterval(pollInterval.current);
+        };
+    }, []);
+
+    const pollData = () => {
+        if (pollInterval.current) clearInterval(pollInterval.current);
+
+        // Timeout after 3 minutes if no new runId
+        const startTime = Date.now();
+
+        pollInterval.current = setInterval(async () => {
+            if (Date.now() - startTime > 180000) {
+                clearInterval(pollInterval.current);
+                setState('error');
+                setMsg('시간 초과');
+                return;
+            }
+
+            try {
+                const res = await fetch(`/data.json?t=${Date.now()}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const fetchedRunId = data.metadata?.runId || '';
+
+                if (fetchedRunId !== currentRunId && fetchedRunId !== '') {
+                    // Script finished running!
+                    clearInterval(pollInterval.current);
+                    const newCount = data.metadata?.newArticlesCount || 0;
+
+                    if (newCount === 0) {
+                        setState('nonew');
+                        setMsg('새 기사가 없습니다.');
+                        setTimeout(() => { setState('idle'); setMsg(''); }, 4000);
+                    } else {
+                        setState('done');
+                        setMsg(`${newCount}개 기사 업데이트 됨!`);
+                        setTimeout(() => { setState('idle'); setMsg(''); }, 4000);
+                    }
+                    if (onRefreshDone) onRefreshDone(data);
+                }
+            } catch (err) {
+                // Ignore fetch errors during polling
+            }
+        }, 5000); // Check every 5 seconds
+    };
 
     const handleRefresh = async () => {
-        if (state === 'triggering' || state === 'waiting') return;
+        if (state === 'triggering' || state === 'polling') return;
         setState('triggering');
         setMsg('');
 
@@ -15,19 +64,16 @@ export default function RefreshButton() {
             const body = await res.json().catch(() => ({}));
 
             if (res.ok && body.ok) {
-                setState('waiting');
-                setMsg('뉴스 수집 중... (약 2~3분 소요)');
-                setTimeout(() => {
-                    setState('done');
-                    setMsg('완료! 새로고침합니다...');
-                    setTimeout(() => window.location.reload(), 1500);
-                }, 120000);
+                setState('polling');
+                setMsg('새 소식 탐색 중...');
+                pollData();
             } else {
                 throw new Error(body.error || `서버 오류 (${res.status})`);
             }
         } catch (err) {
             setState('error');
             setMsg(`실패: ${err.message}`);
+            setTimeout(() => { setState('idle'); setMsg(''); }, 4000);
         }
     };
 
@@ -35,20 +81,21 @@ export default function RefreshButton() {
     const cls = {
         idle: `${base} bg-white text-gray-600 border-gray-200 hover:bg-violet-50 hover:text-violet-700 hover:border-violet-200`,
         triggering: `${base} bg-violet-50 text-violet-600 border-violet-200 cursor-wait`,
-        waiting: `${base} bg-violet-50 text-violet-600 border-violet-200 cursor-wait`,
+        polling: `${base} bg-violet-50 text-violet-600 border-violet-200 cursor-wait`,
         done: `${base} bg-green-50 text-green-700 border-green-200`,
+        nonew: `${base} bg-gray-50 text-gray-500 border-gray-200`,
         error: `${base} bg-red-50 text-red-700 border-red-200`,
     };
 
     return (
         <div className="flex flex-col items-end gap-1">
             <button onClick={handleRefresh} className={cls[state]} title="새 기사 가져오기">
-                {state === 'triggering' || state === 'waiting' ? (
+                {state === 'triggering' || state === 'polling' ? (
                     <>
                         <span className="inline-block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        수집 중...
+                        탐색 중...
                     </>
-                ) : state === 'done' ? '✓ 완료' : (
+                ) : state === 'done' ? '✓ 새로고침 완료' : state === 'nonew' ? '✓ 최신 상태입니다' : (
                     <>
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
