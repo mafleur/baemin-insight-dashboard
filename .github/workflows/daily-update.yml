@@ -4,11 +4,12 @@ on:
   schedule:
     # 23:00 UTC = 08:00 KST
     - cron: '0 23 * * *'
-  workflow_dispatch:   # manual trigger from browser or Refresh button
+  workflow_dispatch:   # manual trigger from refresh button / GitHub UI
 
 jobs:
   fetch:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
     - name: Checkout repository
@@ -25,19 +26,10 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
-    # Puppeteer on Linux needs these system packages
-    - name: Install Chromium system deps
-      run: |
-        sudo apt-get update -q
-        sudo apt-get install -yq \
-          libglib2.0-0 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
-          libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
-          libxrandr2 libgbm1 libasound2t64 libpango-1.0-0 libcairo2
-
-    - name: Run news fetch script
+    - name: Run news fetch script (CI-safe, no Puppeteer)
       env:
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      run: node scripts/fetch-news.mjs
+      run: node scripts/fetch-news-ci.mjs
 
     - name: Commit and push data.json
       run: |
